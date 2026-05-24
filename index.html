@@ -4,13 +4,13 @@
 <meta charset="UTF-8">
 <title>Clondhike</title>
 <style>
-  body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; background:#e5e5e5; margin:0; padding:0; }
-  header { background: #f0f0f0; height:50px; line-height:50px; text-align:center; font-size:18px; font-weight:bold; border-bottom:1px solid #aaa; }
-  .gallery { margin:10px; }
-  .video-card { width:48%; margin:5px; background:#fff; border-radius:10px; padding:5px; float:left; }
-  video { width:100%; border-radius:5px; }
-  .uploader { font-size:12px; color:#555; margin-top:3px; }
-  .clear { clear:both; }
+body { font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; background:#e5e5e5; margin:0; padding:0; }
+header { background:#f0f0f0; height:50px; line-height:50px; text-align:center; font-size:18px; font-weight:bold; border-bottom:1px solid #aaa; }
+.gallery { margin:10px; }
+.video-card { width:48%; margin:5px; background:#fff; border-radius:10px; padding:5px; float:left; }
+video { width:100%; border-radius:5px; }
+.uploader { font-size:12px; color:#555; margin-top:3px; }
+.clear { clear:both; }
 </style>
 </head>
 <body>
@@ -18,9 +18,9 @@
 <div class="gallery" id="gallery"></div>
 <div class="clear"></div>
 
-<!-- Firebase 3.x legacy -->
 <script src="https://www.gstatic.com/firebasejs/3.6.10/firebase.js"></script>
 <script>
+  // Firebase config (legacy)
   var config = {
     apiKey: "AIzaSyAhsd8AzJZumX4k7QuCOlyhlM9uvPRzj2o",
     authDomain: "clondehike.firebaseapp.com",
@@ -29,19 +29,33 @@
   };
   firebase.initializeApp(config);
   var db = firebase.database();
+  
+  // Anonymous user fallback
+  var currentUser = localStorage.getItem("clondhikeUser");
+  if(!currentUser){
+    db.ref('anonymousCounter').transaction(function(val){
+      return (val||0)+1;
+    }, function(err, committed, snap){
+      if(committed){
+        currentUser = "Anonymous User "+snap.val();
+        localStorage.setItem("clondhikeUser", currentUser);
+      }
+    });
+  }
 
-  function loadVideos() {
+  function loadVideos(){
     db.ref('videos').once('value', function(snapshot){
       var gallery = document.getElementById('gallery');
       gallery.innerHTML = "";
       var videos = snapshot.val();
       if(!videos) return;
       for(var key in videos){
-        var videoData = videos[key];
+        var v = videos[key];
         var div = document.createElement('div');
         div.className = "video-card";
-        div.innerHTML = '<video src="'+videoData.url+'" controls playsinline></video>'+
-                        '<div class="uploader">'+videoData.uploader+'</div>';
+        var videoHTML = '<video src="'+v.url+'" controls playsinline></video>'+
+                        '<div class="uploader">'+v.uploader+'</div>';
+        div.innerHTML = videoHTML;
         gallery.appendChild(div);
       }
     });
