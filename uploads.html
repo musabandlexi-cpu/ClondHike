@@ -4,24 +4,30 @@
 <meta charset="UTF-8">
 <title>Clondhike Uploads</title>
 <style>
-  body { font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; background:#e5e5e5; margin:0; padding:0; }
-  header { background:#f0f0f0; height:50px; line-height:50px; text-align:center; font-size:18px; font-weight:bold; border-bottom:1px solid #aaa; }
-  .controls { padding:10px; text-align:center; }
-  input[type=file] { display:block; margin:10px auto; }
-  button { padding:5px 15px; border-radius:5px; border:none; background:#007aff; color:#fff; font-weight:bold; }
-  .gallery { margin:10px; }
-  .video-card { width:48%; margin:5px; background:#fff; border-radius:10px; padding:5px; float:left; }
-  video { width:100%; border-radius:5px; }
-  .uploader { font-size:12px; color:#555; margin-top:3px; }
-  .clear { clear:both; }
+body { font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; background:#e5e5e5; margin:0; padding:0; }
+header { background:#f0f0f0; height:50px; line-height:50px; text-align:center; font-size:18px; font-weight:bold; border-bottom:1px solid #aaa; }
+.controls { padding:10px; text-align:center; }
+input[type=text], input[type=password], input[type=file] { display:block; margin:10px auto; }
+button { padding:5px 15px; border-radius:5px; border:none; background:#007aff; color:#fff; font-weight:bold; }
+.gallery { margin:10px; }
+.video-card { width:48%; margin:5px; background:#fff; border-radius:10px; padding:5px; float:left; }
+video { width:100%; border-radius:5px; }
+.uploader { font-size:12px; color:#555; margin-top:3px; }
+.clear { clear:both; }
 </style>
 </head>
 <body>
 <header>Clondhike Uploads</header>
 
-<div class="controls">
-  <input type="file" id="fileInput">
-  <button id="uploadBtn">Upload Video</button>
+<div class="controls" id="loginDiv">
+<input type="text" id="adminUser" placeholder="Admin Username">
+<input type="password" id="adminPass" placeholder="Password">
+<button id="loginBtn">Login as Admin</button>
+</div>
+
+<div class="controls" id="uploadDiv" style="display:none;">
+<input type="file" id="fileInput">
+<button id="uploadBtn">Upload Video</button>
 </div>
 
 <div class="gallery" id="gallery"></div>
@@ -29,67 +35,88 @@
 
 <script src="https://www.gstatic.com/firebasejs/3.6.10/firebase.js"></script>
 <script>
-  var config = {
-    apiKey: "AIzaSyAhsd8AzJZumX4k7QuCOlyhlM9uvPRzj2o",
-    authDomain: "clondehike.firebaseapp.com",
-    databaseURL: "https://clondehike-default-rtdb.firebaseio.com/",
-    storageBucket: "clondehike.firebasestorage.app"
-  };
-  firebase.initializeApp(config);
-  var db = firebase.database();
+var config = {
+  apiKey: "AIzaSyAhsd8AzJZumX4k7QuCOlyhlM9uvPRzj2o",
+  authDomain: "clondehike.firebaseapp.com",
+  databaseURL: "https://clondehike-default-rtdb.firebaseio.com/",
+  storageBucket: "clondehike.firebasestorage.app"
+};
+firebase.initializeApp(config);
+var db = firebase.database();
 
-  // Anonymous user logic
-  var currentUser = localStorage.getItem("clondhikeUser");
-  if(!currentUser){
-    db.ref('anonymousCounter').transaction(function(val){
-      return (val||0)+1;
-    }, function(err, committed, snap){
-      if(committed){
-        currentUser = "Anonymous User "+snap.val();
-        localStorage.setItem("clondhikeUser", currentUser);
+// Hardcoded admin credentials (super strong password)
+var ADMIN_USER = "Lexy";
+var ADMIN_PASS = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21$$$$$$$$$$$$$$$$$$$$$$";
+
+var currentUser = null;
+
+// Admin login
+document.getElementById("loginBtn").onclick = function(){
+  var u = document.getElementById("adminUser").value;
+  var p = document.getElementById("adminPass").value;
+  if(u === ADMIN_USER && p === ADMIN_PASS){
+    currentUser = u;
+    alert("Admin logged in!");
+    document.getElementById("loginDiv").style.display = "none";
+    document.getElementById("uploadDiv").style.display = "block";
+  } else {
+    alert("Incorrect credentials");
+  }
+};
+
+// Load gallery
+function loadGallery(){
+  db.ref('videos').once('value', function(snapshot){
+    var gallery = document.getElementById('gallery');
+    gallery.innerHTML = "";
+    var videos = snapshot.val();
+    if(!videos) return;
+    for(var key in videos){
+      var v = videos[key];
+      var div = document.createElement('div');
+      div.className = "video-card";
+      var deleteBtn = "";
+      if(currentUser === ADMIN_USER){
+        deleteBtn = '<button onclick="deleteVideo(\''+key+'\')">Delete</button>';
       }
-    });
-  }
+      div.innerHTML = '<video src="'+v.url+'" controls playsinline></video>'+
+                      '<div class="uploader">'+v.uploader+'</div>'+deleteBtn;
+      gallery.appendChild(div);
+    }
+  });
+}
 
-  function loadGallery() {
-    db.ref('videos').once('value', function(snapshot){
-      var gallery = document.getElementById('gallery');
-      gallery.innerHTML = "";
-      var videos = snapshot.val();
-      if(!videos) return;
-      for(var key in videos){
-        var videoData = videos[key];
-        var div = document.createElement('div');
-        div.className = "video-card";
-        div.innerHTML = '<video src="'+videoData.url+'" controls playsinline></video>'+
-                        '<div class="uploader">'+videoData.uploader+'</div>';
-        gallery.appendChild(div);
-      }
-    });
-  }
-
-  // Simple upload via Cloudflare R2 pre-signed URL
-  function uploadVideo(file){
-    if(!file) return alert("Select a file!");
-    var xhr = new XMLHttpRequest();
-    // You need to generate a presigned URL server-side (or via R2 dashboard)
-    var presignedUrl = "<YOUR_PRESIGNED_R2_URL>";
-    xhr.open("PUT", presignedUrl, true);
-    xhr.onload = function(){
-      if(xhr.status === 200){
-        db.ref('videos').push({ url: presignedUrl.split("?")[0], uploader: currentUser });
-        loadGallery();
-      } else alert("Upload failed");
-    };
-    xhr.send(file);
-  }
-
-  document.getElementById("uploadBtn").onclick = function(){
-    var file = document.getElementById("fileInput").files[0];
-    uploadVideo(file);
+// Upload video via Cloudflare R2
+function uploadVideo(file){
+  if(!file) return alert("Select a file!");
+  var xhr = new XMLHttpRequest();
+  var presignedUrl = "<YOUR_R2_PRESIGNED_URL_HERE>"; // Replace with server-generated presigned URL
+  xhr.open("PUT", presignedUrl, true);
+  xhr.onload = function(){
+    if(xhr.status === 200){
+      var publicUrl = presignedUrl.split("?")[0];
+      var uploader = currentUser || "Anonymous";
+      db.ref('videos').push({url: publicUrl, uploader: uploader});
+      loadGallery();
+    } else alert("Upload failed");
   };
+  xhr.send(file);
+}
 
-  window.onload = loadGallery;
+document.getElementById("uploadBtn").onclick = function(){
+  var file = document.getElementById("fileInput").files[0];
+  uploadVideo(file);
+};
+
+// Admin delete video
+function deleteVideo(key){
+  if(confirm("Delete this video?")){
+    db.ref('videos/'+key).remove();
+    loadGallery();
+  }
+}
+
+window.onload = loadGallery;
 </script>
 </body>
 </html>
