@@ -5,14 +5,15 @@
 <title>Clondhike Uploads</title>
 <style>
   body { font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; background:#e5e5e5; margin:0; padding:0; }
-  header { background:linear-gradient(to bottom, #f9f9f9, #ccc); height:50px; line-height:50px; text-align:center; font-size:18px; font-weight:bold; border-bottom:1px solid #aaa; }
+  header { background:#f0f0f0; height:50px; line-height:50px; text-align:center; font-size:18px; font-weight:bold; border-bottom:1px solid #aaa; }
   .controls { padding:10px; text-align:center; }
   input[type=file] { display:block; margin:10px auto; }
   button { padding:5px 15px; border-radius:5px; border:none; background:#007aff; color:#fff; font-weight:bold; }
-  .gallery { display:flex; flex-wrap:wrap; justify-content:space-around; margin:10px; }
-  .video-card { width:48%; margin:5px 0; background:#fff; border-radius:10px; padding:5px; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
+  .gallery { margin:10px; }
+  .video-card { width:48%; margin:5px; background:#fff; border-radius:10px; padding:5px; float:left; }
   video { width:100%; border-radius:5px; }
   .uploader { font-size:12px; color:#555; margin-top:3px; }
+  .clear { clear:both; }
 </style>
 </head>
 <body>
@@ -24,64 +25,71 @@
 </div>
 
 <div class="gallery" id="gallery"></div>
+<div class="clear"></div>
 
-<script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@aws-sdk/client-s3/dist/aws-sdk-client-s3.min.js"></script>
-
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase.js"></script>
 <script>
-  // Firebase config
-  const firebaseConfig = {
+  var config = {
     apiKey: "AIzaSyAhsd8AzJZumX4k7QuCOlyhlM9uvPRzj2o",
     authDomain: "clondehike.firebaseapp.com",
-    projectId: "clondehike",
     databaseURL: "https://clondehike-default-rtdb.firebaseio.com/",
-    storageBucket: "clondehike.firebasestorage.app",
-    messagingSenderId: "474437841289",
-    appId: "1:474437841289:web:05f66d721fdd26b4cf3158",
-    measurementId: "G-HN66H1Y7V3"
+    storageBucket: "clondehike.firebasestorage.app"
   };
+  firebase.initializeApp(config);
+  var db = firebase.database();
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-
-  // Cloudflare R2 credentials
-  const r2Client = new AWS.S3({
-    endpoint: "https://<account-id>.r2.cloudflarestorage.com",
-    region: "auto",
-    credentials: { accessKeyId: "<ACCESS_KEY>", secretAccessKey: "<SECRET_KEY>" }
-  });
-
-  let currentUser = null;
-
-  async function assignAnonymousUser() {
-    const counterSnap = await db.ref("anonymousCounter").transaction(val => (val||0)+1);
-    currentUser = `Anonymous User ${counterSnap.snapshot.val()}`;
-    localStorage.setItem("clondhikeUser", currentUser);
+  // Anonymous user logic
+  var currentUser = localStorage.getItem("clondhikeUser");
+  if(!currentUser){
+    db.ref('anonymousCounter').transaction(function(val){
+      return (val||0)+1;
+    }, function(err, committed, snap){
+      if(committed){
+        currentUser = "Anonymous User "+snap.val();
+        localStorage.setItem("clondhikeUser", currentUser);
+      }
+    });
   }
 
-  if(localStorage.getItem("clondhikeUser")) currentUser = localStorage.getItem("clondhikeUser");
-  else assignAnonymousUser();
+  function loadGallery() {
+    db.ref('videos').once('value', function(snapshot){
+      var gallery = document.getElementById('gallery');
+      gallery.innerHTML = "";
+      var videos = snapshot.val();
+      if(!videos) return;
+      for(var key in videos){
+        var videoData = videos[key];
+        var div = document.createElement('div');
+        div.className = "video-card";
+        div.innerHTML = '<video src="'+videoData.url+'" controls playsinline></video>'+
+                        '<div class="uploader">'+videoData.uploader+'</div>';
+        gallery.appendChild(div);
+      }
+    });
+  }
 
-  async function uploadVideo(file) {
+  // Simple upload via Cloudflare R2 pre-signed URL
+  function uploadVideo(file){
     if(!file) return alert("Select a file!");
-    const key = `${Date.now()}-${file.name}`;
-    await r2Client.putObject({ Bucket: "<bucket-name>", Key: key, Body: file });
-    const url = `https://<bucket-name>.r2.cloudflarestorage.com/${key}`;
-    await db.ref("videos").push({ url, uploader: currentUser });
-    loadGallery();
+    var xhr = new XMLHttpRequest();
+    // You need to generate a presigned URL server-side (or via R2 dashboard)
+    var presignedUrl = "<YOUR_PRESIGNED_R2_URL>";
+    xhr.open("PUT", presignedUrl, true);
+    xhr.onload = function(){
+      if(xhr.status === 200){
+        db.ref('videos').push({ url: presignedUrl.split("?")[0], uploader: currentUser });
+        loadGallery();
+      } else alert("Upload failed");
+    };
+    xhr.send(file);
   }
 
-  document.getElementById("uploadBtn").onclick = () => {
-    const file = document.getElementById("fileInput").files[0];
+  document.getElementById("uploadBtn").onclick = function(){
+    var file = document.getElementById("fileInput").files[0];
     uploadVideo(file);
   };
 
-  // Offline caching (same as index.html)
-  let dbCache;
-  const request = indexedDB.open("clondhikeVideos",1);
-  request.onupgradeneeded = e => {
-    dbCache = e.target.result;
-    if(!dbCache.objectStoreNames.contains("videos")) dbCache.createObjectStore("videos");
-  };
-  request.onsuccess = e => { dbCache = e.target.result; loadGallery();
+  window.onload = loadGallery;
+</script>
+</body>
+</html>
