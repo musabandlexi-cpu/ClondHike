@@ -4,96 +4,50 @@
 <meta charset="UTF-8">
 <title>Clondhike</title>
 <style>
-  body { font-family:"Helvetica Neue", Helvetica, Arial, sans-serif; background:#e5e5e5; margin:0; padding:0; }
-  header { background:linear-gradient(to bottom, #f9f9f9, #ccc); height:50px; line-height:50px; text-align:center; font-size:18px; font-weight:bold; border-bottom:1px solid #aaa; }
-  .gallery { display:flex; flex-wrap:wrap; justify-content:space-around; margin:10px; }
-  .video-card { width:48%; margin:5px 0; background:#fff; border-radius:10px; padding:5px; box-shadow:0 1px 3px rgba(0,0,0,0.3); }
+  body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; background:#e5e5e5; margin:0; padding:0; }
+  header { background: #f0f0f0; height:50px; line-height:50px; text-align:center; font-size:18px; font-weight:bold; border-bottom:1px solid #aaa; }
+  .gallery { margin:10px; }
+  .video-card { width:48%; margin:5px; background:#fff; border-radius:10px; padding:5px; float:left; }
   video { width:100%; border-radius:5px; }
   .uploader { font-size:12px; color:#555; margin-top:3px; }
+  .clear { clear:both; }
 </style>
 </head>
 <body>
 <header>Clondhike</header>
 <div class="gallery" id="gallery"></div>
+<div class="clear"></div>
 
-<script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.13.0/firebase-database.js"></script>
-
+<!-- Firebase 3.x legacy -->
+<script src="https://www.gstatic.com/firebasejs/3.6.10/firebase.js"></script>
 <script>
-  // Firebase config
-  const firebaseConfig = {
+  var config = {
     apiKey: "AIzaSyAhsd8AzJZumX4k7QuCOlyhlM9uvPRzj2o",
     authDomain: "clondehike.firebaseapp.com",
     databaseURL: "https://clondehike-default-rtdb.firebaseio.com/",
-    projectId: "clondehike",
-    storageBucket: "clondehike.firebasestorage.app",
-    messagingSenderId: "474437841289",
-    appId: "1:474437841289:web:05f66d721fdd26b4cf3158",
-    measurementId: "G-HN66H1Y7V3"
+    storageBucket: "clondehike.firebasestorage.app"
   };
+  firebase.initializeApp(config);
+  var db = firebase.database();
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-
-  // IndexedDB for offline caching
-  let dbCache;
-  const request = indexedDB.open("clondhikeVideos", 1);
-  request.onupgradeneeded = e => {
-    dbCache = e.target.result;
-    if(!dbCache.objectStoreNames.contains("videos")) {
-      dbCache.createObjectStore("videos");
-    }
-  };
-  request.onsuccess = e => { dbCache = e.target.result; loadVideos(); };
-
-  function getCachedVideo(url) {
-    return new Promise(resolve => {
-      const tx = dbCache.transaction("videos", "readonly");
-      const store = tx.objectStore("videos");
-      const req = store.get(url);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
-    });
-  }
-
-  function cacheVideo(url, blob) {
-    const tx = dbCache.transaction("videos", "readwrite");
-    const store = tx.objectStore("videos");
-    store.put(blob, url);
-  }
-
-  async function fetchVideo(url) {
-    let cached = await getCachedVideo(url);
-    if(cached) return URL.createObjectURL(cached);
-    try {
-      const resp = await fetch(url);
-      const blob = await resp.blob();
-      cacheVideo(url, blob);
-      return URL.createObjectURL(blob);
-    } catch(e) {
-      console.warn("Offline or failed fetch", url);
-      return null;
-    }
-  }
-
-  async function loadVideos() {
-    const gallery = document.getElementById("gallery");
-    db.ref("videos").once("value").then(async snap => {
+  function loadVideos() {
+    db.ref('videos').once('value', function(snapshot){
+      var gallery = document.getElementById('gallery');
       gallery.innerHTML = "";
-      const videos = snap.val();
+      var videos = snapshot.val();
       if(!videos) return;
-      for(const key in videos){
-        const { url, uploader } = videos[key];
-        const blobUrl = await fetchVideo(url);
-        if(!blobUrl) continue;
-        const div = document.createElement("div");
+      for(var key in videos){
+        var videoData = videos[key];
+        var div = document.createElement('div');
         div.className = "video-card";
-        div.innerHTML = `<video src="${blobUrl}" controls playsinline></video>
-                         <div class="uploader">${uploader}</div>`;
+        div.innerHTML = '<video src="'+videoData.url+'" controls playsinline></video>'+
+                        '<div class="uploader">'+videoData.uploader+'</div>';
         gallery.appendChild(div);
       }
     });
   }
+
+  window.onload = loadVideos;
 </script>
 </body>
-  </html>
+</html>
